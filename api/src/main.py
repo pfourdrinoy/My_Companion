@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import dog
+from .dog import Dog
 
 app = FastAPI()
 
@@ -12,8 +12,12 @@ app.add_middleware(
     allow_headers=["*"],  # Autorise tous les headers
 )
 
+@app.get("/test", response_model=str)
+def test():
+    return "Ceci est un test"
+
 @app.get("/status", response_model=str)
-def status(dog):
+def status(dog: Dog):
     """Afficher l'état du chien"""
     dog.tick()
     status = f"""
@@ -25,7 +29,7 @@ def status(dog):
     return status
 
 @app.get("/play", response_model=str)
-def play(dog):
+def play(dog: Dog):
     """Jouer avec le chien"""
     dog.tick()
     if dog.energy < 20:
