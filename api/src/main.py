@@ -1,8 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .dog import Dog
+from .database import engine, Base
+from .models import User, Dog
+from .routes.dogs import router as dogs_router 
+from .routes.user import router as user_router 
 
-app = FastAPI()
+app = FastAPI(title="My Companion API")
+app.include_router(dogs_router, prefix="/dogs", tags=["Dogs"])
+app.include_router(user_router, prefix="/user", tags=["User"])
+
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,26 +22,3 @@ app.add_middleware(
 @app.get("/test", response_model=str)
 def test():
     return "Ceci est un test"
-
-@app.get("/status", response_model=str)
-def status(dog: Dog):
-    """Afficher l'état du chien"""
-    dog.tick()
-    status = f"""
-    --- État de {dog.name} ---
-    Affection : {dog.affection}/100
-    Énergie   : {dog.energy}/100
-    Faim      : {dog.hunger}/100
-    """
-    return status
-
-@app.get("/play", response_model=str)
-def play(dog: Dog):
-    """Jouer avec le chien"""
-    dog.tick()
-    if dog.energy < 20:
-        return f"😴 {dog.name} est trop fatigué pour jouer."
-    else:
-        dog.energy = dog._clamp(dog.energy - 15)
-        dog.affection = dog._clamp(dog.affection + 8)
-        return f"🎾 {dog.name} joue avec toi ! Énergie = {dog.energy}"
