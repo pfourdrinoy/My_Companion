@@ -6,10 +6,10 @@ from .routes.dogs import router as dogs_router
 from .routes.user import router as user_router 
 
 app = FastAPI(title="My Companion API")
+Base.metadata.create_all(bind=engine)
 app.include_router(dogs_router, prefix="/dogs", tags=["Dogs"])
 app.include_router(user_router, prefix="/user", tags=["User"])
 
-Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
