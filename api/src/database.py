@@ -10,13 +10,10 @@ Base = declarative_base()
 
 def get_db():
     """
-    Fournit une session de base de données à utiliser dans les routes FastAPI.
-    Utilisation typique :
-        def route(db: Session = Depends(get_db)):
-            ...
+    Returns a session from the database
     """
-    db = SessionLocal()  # crée une session
+    db = SessionLocal()
     try:
-        yield db  # yield permet à FastAPI de l'utiliser dans Depends
+        yield db
     finally:
         db.close()
