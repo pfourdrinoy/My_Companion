@@ -1,4 +1,4 @@
-name: "CodeQL Advanced"
+name: CI
 
 on:
   push:
@@ -61,9 +61,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - service: API
+        - service: api
           context: ./api
-        - service: App
+        - service: app
           context: ./app
 
     runs-on: ubuntu-latest
@@ -85,4 +85,4 @@ jobs:
         with:
           context: ${{matrix.context}}
           push: true
-          tags: ${{ vars.DOCKERHUB_USERNAME }}/My_Companion-${{matrix.service}}:latest
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/my_Companion-${{matrix.service}}:latest
