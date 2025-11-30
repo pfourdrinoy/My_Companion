@@ -57,6 +57,7 @@ jobs:
 
   Deploy:
     name: Deploy (${{ matrix.service }})
+    needs: analyze
     strategy:
       fail-fast: false
       matrix:
@@ -85,4 +86,4 @@ jobs:
         with:
           context: ${{matrix.context}}
           push: true
-          tags: ${{ vars.DOCKERHUB_USERNAME }}/my_Companion-${{matrix.service}}:latest
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/my_companion-${{matrix.service}}:latest
