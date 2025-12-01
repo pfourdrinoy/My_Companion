@@ -16,6 +16,7 @@ spec:
       containers:
         - name: api-container
           image: pfourdrinoy/my_companion-api
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:

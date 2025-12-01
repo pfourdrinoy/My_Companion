@@ -16,6 +16,7 @@ spec:
       containers:
         - name: app-container
           image: pfourdrinoy/my_companion-app
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           envFrom:
