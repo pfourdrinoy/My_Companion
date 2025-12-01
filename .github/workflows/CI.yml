@@ -89,4 +89,4 @@ jobs:
         with:
           context: ${{matrix.context}}
           push: true
-          tags: ${{ vars.DOCKERHUB_USERNAME }}/my_companion-${{matrix.service}}:latest
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/my_companion-${{ matrix.service }}:latest

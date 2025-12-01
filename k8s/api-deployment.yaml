@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        application: my-companion
+    spec:
+      containers:
+        - name: api-container
+          image: pfourdrinoy/my_companion-api
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: my-companion-config
+            - secretRef:
+                name: my-companion-secret
