@@ -1,58 +1,66 @@
 import React, { useState } from "react";
 const API_URL = process.env.REACT_APP_API_URL;
 
-function CreateDog({ onLogin }) {
-  const [dogname, setUsername] = useState("");
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+function CreateDog() {
+    const [dogname, setDogname] = useState("");
+    const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(false);
 
-    try {
-      const response = await fetch(`${API_URL}/dogs/create_dog`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          name: dogname,
-        }),
-      });
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setSuccess(false);
 
-      if (!response.ok) {
-        throw new Error("Erreur création");
-      }
+        try {
+            const token = localStorage.getItem("token");
+            const response = await fetch(`${API_URL}/dogs/create_dog`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Authorization": `Bearer ${token}`
+                },
+                body: new URLSearchParams({
+                    name: dogname,
+                }),
+            });
 
-      const data = await response.json();
-      localStorage.setItem("token", data.access_token);
-      onLogin(data.access_token);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.detail || "Erreur création du chien");
+            }
 
-  return (
-    <div className="container mt-5">
-      <h2>Connexion</h2>
+            setSuccess(true);
+            setDogname("");
+        } catch (err) {
+            setError(err.message);
+        }
+    };
 
-      {error && <div className="alert alert-danger">{error}</div>}
+    return (
+        <div className="container mt-5">
+            <h2>Créer un chien</h2>
 
-      <form onSubmit={handleSubmit}>
-        <div className="mb-3">
-          <label>Surnom</label>
-          <input
-            type="text"
-            className="form-control"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
+            {error && <div className="alert alert-danger">{error}</div>}
+            {success && <div className="alert alert-success">Chien créé avec succès !</div>}
+
+            <form onSubmit={handleSubmit}>
+                <div className="mb-3">
+                    <label>Surnom</label>
+                    <input
+                        type="text"
+                        className="form-control"
+                        value={dogname}
+                        onChange={(e) => setDogname(e.target.value)}
+                        required
+                    />
+                </div>
+
+                <button type="submit" className="btn btn-primary">
+                    Créer
+                </button>
+            </form>
         </div>
-
-        <button type="submit" className="btn btn-primary">
-          Créer
-        </button>
-      </form>
-    </div>
-  );
+    );
 }
 
-export default Login;
+export default CreateDog;
