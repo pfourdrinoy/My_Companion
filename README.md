@@ -1,7 +1,11 @@
 # My_Companion
 
-## Docker
-### Commandes:
+## Points d'améliorations
+
+Checker pour l'asynchron des fonctions
+
+## Commandes:
+### Docker
 
 docker build -t my-companion-api-image .
 docker run -d -p 8000:8000 --name my-companion-api my-companion-api-image

@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
 from ..database import get_db
-from ..models import Dog, User
-from ..auth import hash_password, create_access_token, get_current_user, authenticate_user, get_user
+from ..models import User
+from ..auth_utils import hash_password, create_access_token, get_current_user, authenticate_user, get_user
 
 router = APIRouter()
 
@@ -64,7 +64,7 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    access_token = create_access_token(data={"sub": user.username})
+    access_token = create_access_token(data={"sub": user.id})
     return Token(access_token=access_token, token_type="bearer")
 
 @router.get("/user")

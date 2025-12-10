@@ -26,8 +26,8 @@ export function DogRunner() {
         position: "absolute",
         bottom: "5%",      // distance depuis le bas de la page
         left: "50%",          // centre horizontal
-        transform: "translateX(-50%)",// ✔ centre l'élément
-        width: 1000,     // ✔ augmente la taille (tu peux mettre 400, 500...)
+        transform: "translateX(-50%)",// centre l'élément
+        width: 1000,     // augmente la taille (tu peux mettre 400, 500...)
       }}
     // animate={{ x: [0, 200, 0] }} // mouvement latéral autour du centre
     //transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
@@ -89,8 +89,6 @@ export function ProgressBars() {
       <ProgressBar variant="info" now={75} style={{ background: 'linear-gradient(to right, #ff7e5f, #feb47b)', height: '20px', marginTop: '10px' }} />
       <span>Emotion</span>
       <ProgressBar variant="warning" now={40} style={{ background: 'linear-gradient(to right, #ff7e5f, #feb47b)', height: '40px', marginTop: '10px' }} />
-      <span>Quelque chose</span>
-      <ProgressBar variant="danger" now={90} style={{ background: 'linear-gradient(to right, #ff7e5f, #feb47b)', height: '20px', marginTop: '10px' }} />
     </div>
   );
 }
