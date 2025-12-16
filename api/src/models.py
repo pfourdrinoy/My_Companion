@@ -5,16 +5,18 @@ from .database import Base
 
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True, nullable=False)
+
+    username = Column(String, primary_key=True, index=True)
     password = Column(String, nullable=False)
 
-    dogs = relationship("Dog", back_populates="owner")
+    dogs = relationship("Dog", back_populates="owner", cascade="all, delete")
+
 
 class Dog(Base):
     __tablename__ = "dogs"
+
     id = Column(Integer, primary_key=True, index=True)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_username = Column(String, ForeignKey("users.username", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     affection = Column(Integer, nullable=False, default=75)
     energy = Column(Integer, nullable=False, default=75)
@@ -22,6 +24,7 @@ class Dog(Base):
     last_interaction = Column(Float, nullable=False, default=time.time)
 
     owner = relationship("User", back_populates="dogs")
+
 
     def _clamp(self, value):
         return max(0, min(100, value))

@@ -44,7 +44,7 @@ def create_user(userCreate: UserSession, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     
-    return {"id": user.id, "username": user.username}
+    return {"username": user.username}
 
 @router.post("/login")
 async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)) -> Token:
@@ -64,7 +64,7 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    access_token = create_access_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": user.username})
     return Token(access_token=access_token, token_type="bearer")
 
 @router.get("/user")

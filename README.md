@@ -2,6 +2,7 @@
 
 ## Points d'améliorations
 
+Gérer la création de compte pour 2 même username (autehntification, chiens)
 Checker pour l'asynchron des fonctions
 
 ## Commandes:

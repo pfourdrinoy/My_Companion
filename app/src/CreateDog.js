@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 const API_URL = process.env.REACT_APP_API_URL;
 
 function CreateDog() {
+    const navigate = useNavigate();
     const [dogname, setDogname] = useState("");
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
@@ -59,6 +61,11 @@ function CreateDog() {
                     Créer
                 </button>
             </form>
+            <div className="text-end mb-3">
+                <button className="btn btn-primary" onClick={() => navigate(-1)}>
+                    Retour
+                </button>
+            </div>
         </div>
     );
 }
