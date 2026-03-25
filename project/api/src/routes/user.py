@@ -22,7 +22,6 @@ router = APIRouter()
 class RegisterRequest(BaseModel):
     username: str
     password: str
-    native: str
 
 class LanguageStats(BaseModel):
     language: str
@@ -41,13 +40,7 @@ class LanguageStats(BaseModel):
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter_by(username=payload.username).first():
         raise HTTPException(400, "Username already taken")
-    
-    new_user = User(
-        username=payload.username, 
-        password=hash_password(payload.password), 
-        native=payload.native # <--- AJOUTE CECI
-    )
-    db.add(new_user)
+    db.add(User(username=payload.username, password=hash_password(payload.password)))
     db.commit()
     return {"message": "Account created"}
 
@@ -63,11 +56,8 @@ def login(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = D
 
 @router.get("/me")
 def me(current_user: Annotated[User, Depends(get_current_user)]):
-    return {
-        "id": current_user.id, 
-        "username": current_user.username, 
-        "native": current_user.native
-    }
+    return {"id": current_user.id, "username": current_user.username}
+
 
 # ---------------------------------------------------------------------------
 # Language management
@@ -159,6 +149,10 @@ def get_vocabulary(
             "id":                     w.id,
             "language":               w.language,
             "word":                   w.word,
+            "translation":            w.translation,
+            "pos":                    w.pos,
+            "word_determiner":        w.word_determiner,
+            "translation_determiner": w.translation_determiner,
             "correct_count":          w.correct_count,
             "wrong_count":            w.wrong_count,
             "mastery_score":          w.mastery_score,

@@ -1,0 +1,166 @@
+from __future__ import annotations
+
+from typing import Annotated
+import asyncio
+import random
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from ..auth import get_current_user
+from ..database import get_db
+from ..models import User, UserLanguage, UserVocabulary
+from .ai import (
+    _ollama_retry, _single_word, _valid_pos,
+    _spacy_gender, _spacy_pos, DETERMINERS, VOWELS,
+    _ollama, OLLAMA_MODEL,
+)
+
+router = APIRouter()
+
+
+def _check_enrolled(user_id: int, language: str, db: Session):
+    enrolled = db.query(UserLanguage).filter_by(user_id=user_id, language=language).first()
+    if not enrolled:
+        raise HTTPException(403, f"Not enrolled in '{language}'. Enroll first via POST /user/languages/{language}")
+
+
+def _vocab_query(user_id: int, language: str, db: Session):
+    return (
+        db.query(UserVocabulary)
+        .filter_by(user_id=user_id, language=language)
+        .order_by(UserVocabulary.mastery_score.asc())
+        .all()
+    )
+
+
+async def _get_translation(word: str, language: str) -> str:
+    prompt = f'Translate "{word}" from {language} to english. Reply with the translated word only, no punctuation, no explanation.'
+    return await _ollama_retry(prompt, _single_word)
+
+
+async def _get_pos(word: str, language: str) -> str | None:
+    if pos := _spacy_pos(word, language):
+        return pos
+    from .ai import VALID_POS
+    prompt = f'What is the grammatical category of "{word}" in {language}? Reply with ONE word from: {", ".join(VALID_POS)}. No explanation.'
+    try:
+        return await _ollama_retry(prompt, _valid_pos)
+    except HTTPException:
+        return None
+
+
+async def _get_determiner(word: str, language: str) -> str | None:
+    gender = _spacy_gender(word, language)
+    if gender:
+        lang_map = DETERMINERS.get(language.lower(), {})
+        if language.lower() == "french" and word[0].lower() in VOWELS:
+            return "l'"
+        if det := lang_map.get(gender):
+            return det
+    # fallback to Ollama only for supported languages
+    if language.lower() not in DETERMINERS:
+        return None
+    prompt = f'Give the correct definite article for "{word}" in {language}. Reply ONLY with: article + word (e.g. "le chien"). No explanation.'
+    try:
+        result = await _ollama_retry(
+            prompt,
+            lambda r: r if word.lower() in r.lower() else (_ for _ in ()).throw(ValueError(f"Word missing from: {r!r}"))
+        )
+        return result or None
+    except HTTPException:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Word exercise
+# ---------------------------------------------------------------------------
+
+@router.get("/word")
+async def exercise_word(
+    language: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Return a word to translate (weakest mastery first), enriched via AI."""
+    language = language.lower()
+    _check_enrolled(current_user.id, language, db)
+    words = _vocab_query(current_user.id, language, db)
+    if not words:
+        raise HTTPException(404, "No vocabulary yet for this language")
+
+    pool = words[:max(1, len(words) // 3)]
+    word = random.choice(pool)
+
+    # Fetch translation, pos and determiner in parallel via AI
+    translation, pos, word_determiner = await asyncio.gather(
+        _get_translation(word.word, language),
+        _get_pos(word.word, language),
+        _get_determiner(word.word, language),
+        return_exceptions=True,
+    )
+
+    return {
+        "id":            word.id,
+        "word":          word.word,
+        "translation":   translation if isinstance(translation, str) else "",
+        "pos":           pos if isinstance(pos, str) else None,
+        "word_determiner": word_determiner if isinstance(word_determiner, str) else None,
+        "language":      word.language,
+        "mastery_score": word.mastery_score,
+        "correct_count": word.correct_count,
+        "wrong_count":   word.wrong_count,
+    }
+
+
+@router.post("/word/{vocab_id}/answer")
+def answer_word(
+    vocab_id: int,
+    user_answer: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Submit an answer for a word exercise and update mastery."""
+    word = db.query(UserVocabulary).filter_by(id=vocab_id, user_id=current_user.id).first()
+    if not word:
+        raise HTTPException(404, "Vocabulary entry not found")
+
+    # Compare against user_answer — translation is fetched live so we re-use the stored word
+    correct = user_answer.strip().lower() == word.word.strip().lower()
+    if correct:
+        word.correct_count += 1
+    else:
+        word.wrong_count += 1
+
+    total = word.correct_count + word.wrong_count
+    word.mastery_score = round(word.correct_count / total, 3) if total else 0.0
+    db.commit()
+
+    return {
+        "correct":       correct,
+        "mastery_score": word.mastery_score,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sentence exercise (placeholder — powered by AI route)
+# ---------------------------------------------------------------------------
+
+@router.get("/sentence")
+def exercise_sentence(
+    language: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+):
+    """Return a sentence built from the user's weakest words."""
+    language = language.lower()
+    _check_enrolled(current_user.id, language, db)
+    words = _vocab_query(current_user.id, language, db)
+    if not words:
+        raise HTTPException(404, "No vocabulary yet for this language")
+    sample = [w.word for w in words[:5]]
+    return {
+        "language": language,
+        "words":    sample,
+        "hint":     "Use the AI /ai/translate/sentence endpoint to get a sentence with these words.",
+    }

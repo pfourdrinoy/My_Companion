@@ -13,11 +13,11 @@ LANGUAGES: dict[str, dict] = {
     "french":     {"flag": "🇫🇷", "label": "French"},
     "spanish":    {"flag": "🇪🇸", "label": "Spanish"},
     "german":     {"flag": "🇩🇪", "label": "German"},
-    # "italian":    {"flag": "🇮🇹", "label": "Italian"},
-    # "portuguese": {"flag": "🇵🇹", "label": "Portuguese"},
-    # "english":    {"flag": "🇬🇧", "label": "English"},
-    # "japanese":   {"flag": "🇯🇵", "label": "Japanese"},
-    # "chinese":    {"flag": "🇨🇳", "label": "Chinese"},
+    "italian":    {"flag": "🇮🇹", "label": "Italian"},
+    "portuguese": {"flag": "🇵🇹", "label": "Portuguese"},
+    "english":    {"flag": "🇬🇧", "label": "English"},
+    "japanese":   {"flag": "🇯🇵", "label": "Japanese"},
+    "chinese":    {"flag": "🇨🇳", "label": "Chinese"},
 }
 
 
@@ -31,7 +31,6 @@ class User(Base):
     id       = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
-    native = Column(String, nullable=False)
 
     dogs       = relationship("Dog", back_populates="owner")
     vocabulary = relationship("UserVocabulary", back_populates="owner")
@@ -82,8 +81,12 @@ class UserVocabulary(Base):
 
     id                     = Column(Integer, primary_key=True, index=True)
     user_id                = Column(Integer, ForeignKey("users.id"), nullable=False)
-    language               = Column(String, nullable=False)
-    word                   = Column(String, nullable=False)
+    language               = Column(String, nullable=False)   # e.g. "french"
+    word                   = Column(String, nullable=False)   # e.g. "Hund"
+    translation            = Column(String, nullable=False)   # e.g. "dog"
+    pos                    = Column(String, nullable=True)    # e.g. "noun"
+    word_determiner        = Column(String, nullable=True)    # e.g. "der"
+    translation_determiner = Column(String, nullable=True)    # e.g. "the"
     correct_count          = Column(Integer, default=0)
     wrong_count            = Column(Integer, default=0)
     mastery_score          = Column(Float, default=0.0)

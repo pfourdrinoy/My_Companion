@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:16
@@ -24,6 +22,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - OLLAMA_URL=http://ollama:11434
       - SECRET_KEY="SECRET_DEV_KEY"
       - ACCESS_TOKEN_EXPIRE_MINUTES=60
       - DATABASE_URL=postgresql+psycopg2://admin:admin@db:5432/dogsdb
@@ -37,12 +36,22 @@ services:
       context: ./app
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "80:80"
     environment:
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       db:
         condition: service_healthy
 
+  ollama:
+    build: 
+      context: ./ollama 
+      dockerfile: Dockerfile
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
 volumes:
   postgres_data:
+  ollama_data:
