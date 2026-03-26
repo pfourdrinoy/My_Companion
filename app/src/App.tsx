@@ -25,7 +25,7 @@ export type WordFromBackend = {
   pos: string | null;
   gender: string | null;
   word_determiner: string | null;
-  translation_determiner: string | null;
+  language: string;
   mastery_score: number;
   correct_count: number;
   wrong_count: number;
@@ -109,23 +109,23 @@ export default function App() {
     }
   };
 
-const handleRegister = async (username: string, password: string, nativeLanguage: string) => {
-  try {
-    const response = await fetch(`${BASE_URL}/user/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        username, 
-        password, 
-        native: nativeLanguage
-      })
-    });
-    if (!response.ok) throw new Error("Registration failed");
-    await handleLogin(username, password);
-  } catch (error) {
-    console.error("Register error:", error);
-  }
-};
+  const handleRegister = async (username: string, password: string, nativeLanguage: string) => {
+    try {
+      const response = await fetch(`${BASE_URL}/user/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          password,
+          native: nativeLanguage
+        })
+      });
+      if (!response.ok) throw new Error("Registration failed");
+      await handleLogin(username, password);
+    } catch (error) {
+      console.error("Register error:", error);
+    }
+  };
 
   const authFetch = (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem("token");
@@ -163,55 +163,57 @@ const handleRegister = async (username: string, password: string, nativeLanguage
           return String(data ?? "");
         };
 
-        const results = await Promise.allSettled(
-          Array.from({ length: 5 }).map(() =>
-            authFetch(`${BASE_URL}/ai/get/new_word?language_learnt=${langName}`, { method: "POST" })
-              .then(r => r.json())
-              .then(async (rawWord: unknown) => {
-                const newWord = extractScalar(rawWord);
-                const base: WordFromBackend = {
-                  id: Math.random(),
-                  word: newWord,
-                  translation: "",
-                  pos: null,
-                  gender: null,
-                  word_determiner: null,
-                  translation_determiner: null,
-                  mastery_score: 0,
-                  correct_count: 0,
-                  wrong_count: 0,
-                };
+        const seenWords = new Set<string>();
 
-                const [translationRes, posRes, wordDetRes] = await Promise.allSettled([
-                  authFetch(`${BASE_URL}/ai/translate/word?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
-                  authFetch(`${BASE_URL}/ai/get/word_pos?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
-                  authFetch(`${BASE_URL}/ai/get/word_determiner?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
-                ]);
+        for (let i = 0; i < 5; i++) {
+          try {
+            let newWord = "";
+            // Jusqu'à 3 tentatives pour obtenir un mot différent
+            for (let attempt = 0; attempt < 3; attempt++) {
+              const rawWord = await authFetch(
+                `${BASE_URL}/ai/get/new_word?language_learnt=${langName}`,
+                { method: "POST" }
+              ).then(r => r.json());
+              const candidate = extractScalar(rawWord);
+              if (candidate && !seenWords.has(candidate)) {
+                newWord = candidate;
+                break;
+              }
+            }
 
-                const translation = translationRes.status === "fulfilled" ? extractScalar(translationRes.value) : "";
-                const pos = posRes.status === "fulfilled" ? posRes.value as string : null;
-                const word_determiner = wordDetRes.status === "fulfilled" ? wordDetRes.value as string | null : null;
+            if (!newWord) continue;
+            seenWords.add(newWord);
 
-                let translation_determiner: string | null = null;
-                if (translation) {
-                  const transDetRes = await authFetch(
-                    `${BASE_URL}/ai/get/word_determiner?word=${encodeURIComponent(translation)}&language_learnt=english`,
-                    { method: "POST" }
-                  ).then(r => r.json()).catch(() => null);
-                  translation_determiner = transDetRes as string | null;
-                }
+            const base: WordFromBackend = {
+              id: Math.random(),
+              word: newWord,
+              translation: "",
+              pos: null,
+              gender: null,
+              word_determiner: null,
+              mastery_score: 0,
+              correct_count: 0,
+              wrong_count: 0,
+            };
 
-                return { ...base, translation, pos, word_determiner, translation_determiner };
-              })
-          )
-        );
+            const [translationRes, posRes, wordDetRes] = await Promise.allSettled([
+              authFetch(`${BASE_URL}/ai/translate/word?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
+              authFetch(`${BASE_URL}/ai/get/word_pos?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
+              authFetch(`${BASE_URL}/ai/get/word_determiner?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
+            ]);
 
-        words = results
-          .filter((r): r is PromiseFulfilledResult<WordFromBackend> => r.status === "fulfilled")
-          .map(r => r.value);
+            const translation = translationRes.status === "fulfilled" ? extractScalar(translationRes.value) : "";
+            const pos = posRes.status === "fulfilled" ? posRes.value as string : null;
+            const word_determiner = wordDetRes.status === "fulfilled" ? wordDetRes.value as string | null : null;
+
+            words.push({ ...base, translation, pos, word_determiner });
+          } catch (e) {
+            console.error(`Erreur mot ${i}:`, e);
+          }
+        }
 
       } else {
-        const response = await authFetch(`${BASE_URL}/exercises/${type}?limit=5`);
+        const response = await authFetch(`${BASE_URL}/exercises/word?language=${langName}`);
         if (!response.ok) throw new Error("Erreur lors de la récupération des exercices");
         words = await response.json();
       }
@@ -227,9 +229,64 @@ const handleRegister = async (username: string, password: string, nativeLanguage
     }
   };
 
+  // Pour le mode letter : récupère plusieurs mots distincts depuis la BDD
+  // puis enrichit chacun avec le déterminant et le POS via l'IA
+  const startLetterSession = async () => {
+    const langName = activeLanguage?.language;
+    if (!langName) return;
+    try {
+      // 1. Récupère jusqu'à 10 mots triés par mastery (les plus faibles d'abord)
+      const res = await authFetch(`${BASE_URL}/vocabulary/all_sorted?language=${langName}&limit=10`);
+      if (!res.ok) { console.error("Erreur fetch vocabulaire"); return; }
+      const raw: { id: number; word: string; translation: string | null; gender: string | null; language: string; mastery_score: number; correct_count: number; wrong_count: number }[] = await res.json();
+      if (raw.length === 0) { console.error("Aucun mot dans la BDD pour cette langue"); return; }
+
+      // 2. Mélange et limite à 5
+      const shuffled = [...raw].sort(() => 0.5 - Math.random()).slice(0, 5);
+
+      // 3. Enrichit chaque mot avec word_determiner et pos en parallèle
+      const enriched = await Promise.all(
+        shuffled.map(async (w) => {
+          const [detRes, posRes] = await Promise.allSettled([
+            authFetch(`${BASE_URL}/ai/get/word_determiner?word=${encodeURIComponent(w.word)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
+            authFetch(`${BASE_URL}/ai/get/word_pos?word=${encodeURIComponent(w.word)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
+          ]);
+
+          const rawDet = detRes.status === "fulfilled" ? String(detRes.value ?? "") : null;
+          const pos    = posRes.status === "fulfilled" ? String(posRes.value ?? "") : null;
+
+          return {
+            id:              w.id,
+            word:            w.word,
+            translation:     w.translation ?? "",
+            pos,
+            gender:          w.gender ?? null,
+            word_determiner: rawDet,
+            language:        w.language,
+            mastery_score:   w.mastery_score,
+            correct_count:   w.correct_count,
+            wrong_count:     w.wrong_count,
+          } satisfies WordFromBackend;
+        })
+      );
+
+      setSessionExercises(enriched);
+      setSessionType("vocabulary");
+      setCurrentExerciseIndex(0);
+      setCorrectCount(0);
+      setScreen("exercise");
+    } catch (error) {
+      console.error("Erreur startLetterSession:", error);
+    }
+  };
+
   const startVocabularySession = async (mode: VocabMode) => {
     setVocabMode(mode);
-    await startSession('vocabulary');
+    if (mode === "letter") {
+      await startLetterSession();
+    } else {
+      await startSession("vocabulary");
+    }
   };
 
   const handleExerciseResult = (correct: boolean) => {

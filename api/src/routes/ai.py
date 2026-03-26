@@ -8,6 +8,7 @@ import httpx
 import spacy
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from PyMultiDictionary import MultiDictionary
 
 from ..auth import get_current_user
 from ..database import get_db
@@ -20,11 +21,13 @@ router = APIRouter()
 # Config
 # ---------------------------------------------------------------------------
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_URL   = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = "zongwei/gemma3-translator:4b"
-MAX_RETRIES = 3
+MAX_RETRIES  = 3
 
 VOWELS = set("aeiouâêîôûàèùéëïü")
+
+LANG_CODES = {"french": "fr", "spanish": "es", "german": "de", "english": "en"}
 
 SPACY_MODELS = {"french": "fr_core_news_sm", "spanish": "es_core_news_sm", "german": "de_core_news_sm"}
 SPACY_GENDER_MAP = {"Masc": "Masculine", "Fem": "Feminine", "Neut": "Neuter"}
@@ -35,18 +38,19 @@ SPACY_POS_MAP = {
 }
 
 DETERMINERS = {
-    "french":  {"Masculine": "le", "Feminine": "la"},
-    "spanish": {"Masculine": "el", "Feminine": "la"},
+    "french":  {"Masculine": "le",  "Feminine": "la"},
+    "spanish": {"Masculine": "el",  "Feminine": "la"},
     "german":  {"Masculine": "der", "Feminine": "die", "Neuter": "das"},
 }
 
 VALID_POS = {"noun", "verb", "adjective", "adverb", "pronoun", "preposition", "conjunction", "interjection"}
 
+_dictionary  = MultiDictionary()
+_nlp_cache: dict = {}
+
 # ---------------------------------------------------------------------------
 # spaCy
 # ---------------------------------------------------------------------------
-
-_nlp_cache: dict = {}
 
 def _get_nlp(language: str):
     lang = language.lower()
@@ -61,19 +65,18 @@ def _get_nlp(language: str):
             return None
     return _nlp_cache[lang]
 
+
 def _spacy_gender(word: str, language: str) -> str | None:
-    nlp = _get_nlp(language)
-    if not nlp:
+    if not (nlp := _get_nlp(language)):
         return None
     for token in nlp(word):
-        values = token.morph.get("Gender")
-        if values:
+        if values := token.morph.get("Gender"):
             return SPACY_GENDER_MAP.get(values[0])
     return None
 
+
 def _spacy_pos(word: str, language: str) -> str | None:
-    nlp = _get_nlp(language)
-    if not nlp:
+    if not (nlp := _get_nlp(language)):
         return None
     for token in nlp(word):
         if token.pos_:
@@ -94,6 +97,7 @@ async def _ollama(prompt: str) -> str:
     r.raise_for_status()
     return r.json()["response"].strip()
 
+
 async def _ollama_retry(prompt: str, validator, max_retries: int = MAX_RETRIES) -> str:
     last_error = None
     for _ in range(max_retries):
@@ -113,25 +117,31 @@ async def _ollama_retry(prompt: str, validator, max_retries: int = MAX_RETRIES) 
 
 def _max(n: int):
     def v(raw: str) -> str:
-        if not raw: raise ValueError("Empty response")
-        if len(raw) > n: raise ValueError("Response too long")
+        if not raw:        raise ValueError("Empty response")
+        if len(raw) > n:   raise ValueError("Response too long")
         return raw
     return v
 
+
 def _single_word(raw: str) -> str:
     w = raw.lower().strip()
-    if len(w.split()) > 1: raise ValueError("More than one word")
+    if len(w.split()) > 1:
+        raise ValueError("More than one word")
     return w
+
 
 def _valid_pos(raw: str) -> str:
     pos = raw.strip().lower()
-    if pos not in VALID_POS: raise ValueError(f"Unknown POS: {raw!r}")
+    if pos not in VALID_POS:
+        raise ValueError(f"Unknown POS: {raw!r}")
     return pos
+
 
 def _not_known(known: list[str]):
     def v(raw: str) -> str:
         w = _single_word(raw)
-        if w in known: raise ValueError(f"Word already known: {w!r}")
+        if w in known:
+            raise ValueError(f"Word already known: {w!r}")
         return w
     return v
 
@@ -139,10 +149,10 @@ def _not_known(known: list[str]):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _require_enrolled(user_id: int, language: str, db: Session):
-    """Raise 403 if the user is not enrolled in the given language."""
+def _require_enrolled(user_id: int, language: str, db: Session) -> None:
     if not db.query(UserLanguage).filter_by(user_id=user_id, language=language.lower()).first():
         raise HTTPException(403, f"Not enrolled in '{language}'. Enroll first via POST /user/languages/{language}")
+
 
 def _known_words(user_id: int, language: str, db: Session) -> list[str]:
     rows = (
@@ -153,29 +163,43 @@ def _known_words(user_id: int, language: str, db: Session) -> list[str]:
     )
     return [w.word.lower().strip() for w in rows]
 
+
+def _dictionary_translate(word: str, language_learnt: str, language_user: str) -> str | None:
+    src  = LANG_CODES.get(language_learnt.lower())
+    dest = LANG_CODES.get(language_user.lower(), "en")
+    if not src:
+        return None
+    try:
+        translations = _dictionary.translate(src, word)
+        if translations and dest in translations and translations[dest]:
+            return translations[dest][0]
+    except Exception:
+        pass
+    return None
+
 # ---------------------------------------------------------------------------
 # Routes — feedback
 # ---------------------------------------------------------------------------
 
 @router.post("/feedback/word")
 async def feedback_word(word: str, user_answer: str, correct_answer: str, language_learnt: str, language_user: str = "english"):
-    prompt = f"""
-    The user is learning {language_learnt}.
-    Word to translate: "{word}". Correct answer: "{correct_answer}". User's answer: "{user_answer}".
-    Briefly explain why it's wrong and give a tip to remember the right word.
-    Reply ONLY in {language_user}, 2-3 sentences, without restating the question.
-    """
+    prompt = (
+        f"The user is learning {language_learnt}.\n"
+        f'Word to translate: "{word}". Correct answer: "{correct_answer}". User\'s answer: "{user_answer}".\n'
+        f"Briefly explain why it's wrong and give a tip to remember the right word.\n"
+        f"Reply ONLY in {language_user}, 2-3 sentences, without restating the question."
+    )
     return {"feedback": await _ollama_retry(prompt, _max(500))}
 
 
 @router.post("/feedback/sentence")
 async def feedback_sentence(sentence: str, user_answer: str, correct_answer: str, language_learnt: str, language_user: str = "english"):
-    prompt = f"""
-    The user is learning {language_learnt}.
-    Sentence to translate: "{sentence}". Correct translation: "{correct_answer}". User's translation: "{user_answer}".
-    Briefly explain why it's wrong and give a tip.
-    Reply ONLY in {language_user}, 2-3 sentences, without restating the question.
-    """
+    prompt = (
+        f"The user is learning {language_learnt}.\n"
+        f'Sentence to translate: "{sentence}". Correct translation: "{correct_answer}". User\'s translation: "{user_answer}".\n'
+        f"Briefly explain why it's wrong and give a tip.\n"
+        f"Reply ONLY in {language_user}, 2-3 sentences, without restating the question."
+    )
     return {"feedback": await _ollama_retry(prompt, _max(500))}
 
 # ---------------------------------------------------------------------------
@@ -184,15 +208,17 @@ async def feedback_sentence(sentence: str, user_answer: str, correct_answer: str
 
 @router.post("/explain/definition")
 async def explain_definition(word: str, language_learnt: str, language_user: str = "english"):
-    prompt = f"""
-    Define the word "{word}" in {language_learnt}.
-    Reply ONLY with the definition in {language_user}, 1-2 sentences, without mentioning the word itself.
-    """
+    prompt = (
+        f'Define the word "{word}" in {language_learnt}.\n'
+        f"Reply ONLY with the definition in {language_user}, 1-2 sentences, without mentioning the word itself."
+    )
     return {"definition": await _ollama_retry(prompt, _max(300))}
 
 
 @router.post("/translate/word")
 async def translate_word(word: str, language_learnt: str, language_user: str = "english"):
+    if translation := _dictionary_translate(word, language_learnt, language_user):
+        return translation
     prompt = f'Translate "{word}" from {language_learnt} to {language_user}. Reply with the translated word only, no punctuation, no explanation.'
     return await _ollama_retry(prompt, _single_word)
 
@@ -203,7 +229,7 @@ async def translate_sentence(sentence: str, language_learnt: str, language_user:
     return await _ollama_retry(prompt, lambda r: r if r else (_ for _ in ()).throw(ValueError("Empty")))
 
 # ---------------------------------------------------------------------------
-# Routes — vocabulary (language-scoped)
+# Routes — vocabulary
 # ---------------------------------------------------------------------------
 
 @router.post("/get/new_word")
@@ -212,12 +238,23 @@ async def get_new_word(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db),
     language_user: str = "english",
+    exclude: str = "",   # mots déjà générés dans la session, séparés par des virgules
 ):
     language_learnt = language_learnt.lower()
     _require_enrolled(current_user.id, language_learnt, db)
     known = _known_words(current_user.id, language_learnt, db)
-    prompt = f'You are a {language_learnt} learning assistant. The user knows: {known}. Suggest one new useful {language_learnt} word they don\'t know yet. Reply with that word only.'
-    return await _ollama_retry(prompt, _not_known(known))
+
+    # Fusionner DB + mots déjà générés dans la session courante
+    session_exclude = [w.strip().lower() for w in exclude.split(",") if w.strip()]
+    all_excluded = list(set(known + session_exclude))
+
+    prompt = (
+        f"You are a {language_learnt} learning assistant. "
+        f"The user already knows these words: {all_excluded}. "
+        f"Suggest ONE new useful {language_learnt} word they don't know yet. "
+        f"Reply with that single word ONLY, no punctuation, no explanation."
+    )
+    return await _ollama_retry(prompt, _not_known(all_excluded))
 
 
 @router.post("/get/word_determiner")
@@ -226,10 +263,10 @@ async def get_word_determiner(
     language_learnt: str,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> str:
-    gender = _spacy_gender(word, language_learnt)
-    if gender:
-        lang_map = DETERMINERS.get(language_learnt.lower(), {})
-        if language_learnt.lower() == "french" and word[0].lower() in VOWELS:
+    if gender := _spacy_gender(word, language_learnt):
+        lang     = language_learnt.lower()
+        lang_map = DETERMINERS.get(lang, {})
+        if lang == "french" and word[0].lower() in VOWELS:
             return "l'"
         if det := lang_map.get(gender):
             return det

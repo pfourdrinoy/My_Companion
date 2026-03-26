@@ -18,23 +18,31 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 class VocabularyCreate(BaseModel):
-    word: str
-    language: str
+    word:        str
+    language:    str
+    # FIX: translation et gender peuvent être fournis à l'ajout pour éviter
+    # de les recalculer à chaque session d'exercice
+    translation: str | None = None
+    gender:      str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _require_enrolled(user_id: int, language: str, db: Session):
+def _require_enrolled(user_id: int, language: str, db: Session) -> None:
     if not db.query(UserLanguage).filter_by(user_id=user_id, language=language).first():
         raise HTTPException(403, f"Not enrolled in '{language}'. Enroll first via POST /user/languages/{language}")
+
 
 def _serialize(w: UserVocabulary) -> dict:
     return {
         "id":            w.id,
         "language":      w.language,
         "word":          w.word,
+        # FIX: translation et gender inclus dans la sérialisation
+        "translation":   w.translation,
+        "gender":        w.gender,
         "correct_count": w.correct_count,
         "wrong_count":   w.wrong_count,
         "mastery_score": w.mastery_score,
@@ -52,7 +60,6 @@ def add_vocabulary(
     db: Session = Depends(get_db),
 ):
     """Add multiple words at once, lowercase, skipping duplicates per language."""
-    # Group existing words by language to avoid N+1 queries
     existing: set[tuple[str, str]] = {
         (w.language, w.word)
         for w in db.query(UserVocabulary.language, UserVocabulary.word)
@@ -72,7 +79,14 @@ def add_vocabulary(
             skipped.append(word)
             continue
 
-        entry = UserVocabulary(user_id=current_user.id, language=language, word=word)
+        entry = UserVocabulary(
+            user_id=current_user.id,
+            language=language,
+            word=word,
+            # FIX: persiste translation et gender si fournis
+            translation=vocab.translation.strip().lower() if vocab.translation else None,
+            gender=vocab.gender.strip().lower() if vocab.gender else None,
+        )
         db.add(entry)
         added.append(entry)
         existing.add((language, word))
@@ -97,8 +111,7 @@ def get_all_vocabulary(
     q = db.query(UserVocabulary).filter_by(user_id=current_user.id)
     if language:
         q = q.filter_by(language=language.lower())
-    words = q.order_by(UserVocabulary.word.asc()).all()
-    return [_serialize(w) for w in words]
+    return [_serialize(w) for w in q.order_by(UserVocabulary.word.asc()).all()]
 
 
 @router.get("/all_sorted")

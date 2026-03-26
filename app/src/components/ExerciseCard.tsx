@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Check, X, RotateCcw, Loader2 } from "lucide-react";
+import { Check, X, RotateCcw } from "lucide-react";
 import { WordFromBackend } from "../App";
 
 interface ExerciseCardProps {
@@ -14,26 +14,14 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, onResult, authFet
   const [translation, setTranslation] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleFlip = async () => {
+  const handleFlip = () => {
     if (isFlipped) { setIsFlipped(false); return; }
 
     setIsFlipped(true);
 
     if (translation !== null) return;
 
-    setIsLoading(true);
-    try {
-      const res = await authFetch(
-        `http://localhost:8000/ai/translate/word?word=${encodeURIComponent(exercise.word)}&language_learnt=${encodeURIComponent(exercise.language)}`
-      );
-      if (!res.ok) throw new Error("Translation failed");
-      const data = await res.json();
-      setTranslation(typeof data === "string" ? data : data.translation ?? "—");
-    } catch {
-      setTranslation("—");
-    } finally {
-      setIsLoading(false);
-    }
+    setTranslation(exercise.translation || "—");
   };
 
   return (
@@ -78,13 +66,9 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, onResult, authFet
             </span>
 
             <div className="flex-1 flex flex-col items-center justify-center gap-3">
-              {isLoading ? (
-                <Loader2 size={32} className="text-stone-400 animate-spin" />
-              ) : (
                 <h3 className="text-6xl font-extrabold text-white tracking-tight first-letter:capitalize leading-tight">
                   {translation}
                 </h3>
-              )}
             </div>
 
             <div className="flex justify-center">

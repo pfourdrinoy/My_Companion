@@ -13,19 +13,17 @@ from ..models import User, UserLanguage, UserVocabulary
 from .ai import (
     _ollama_retry, _single_word, _valid_pos,
     _spacy_gender, _spacy_pos, DETERMINERS, VOWELS,
-    _ollama, OLLAMA_MODEL,
 )
 
 router = APIRouter()
 
 
-def _check_enrolled(user_id: int, language: str, db: Session):
-    enrolled = db.query(UserLanguage).filter_by(user_id=user_id, language=language).first()
-    if not enrolled:
+def _check_enrolled(user_id: int, language: str, db: Session) -> None:
+    if not db.query(UserLanguage).filter_by(user_id=user_id, language=language).first():
         raise HTTPException(403, f"Not enrolled in '{language}'. Enroll first via POST /user/languages/{language}")
 
 
-def _vocab_query(user_id: int, language: str, db: Session):
+def _vocab_query(user_id: int, language: str, db: Session) -> list[UserVocabulary]:
     return (
         db.query(UserVocabulary)
         .filter_by(user_id=user_id, language=language)
@@ -58,7 +56,6 @@ async def _get_determiner(word: str, language: str) -> str | None:
             return "l'"
         if det := lang_map.get(gender):
             return det
-    # fallback to Ollama only for supported languages
     if language.lower() not in DETERMINERS:
         return None
     prompt = f'Give the correct definite article for "{word}" in {language}. Reply ONLY with: article + word (e.g. "le chien"). No explanation.'
@@ -70,6 +67,21 @@ async def _get_determiner(word: str, language: str) -> str | None:
         return result or None
     except HTTPException:
         return None
+
+
+def _serialize_word(word: UserVocabulary, translation: str, pos: str | None, word_determiner: str | None) -> dict:
+    return {
+        "id":               word.id,
+        "word":             word.word,
+        "translation":      translation,
+        "pos":              pos,
+        "gender":           word.gender,        # FIX: lu depuis la BDD
+        "word_determiner":  word_determiner,
+        "language":         word.language,
+        "mastery_score":    word.mastery_score,
+        "correct_count":    word.correct_count,
+        "wrong_count":      word.wrong_count,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -92,31 +104,35 @@ async def exercise_word(
     pool = words[:max(1, len(words) // 3)]
     word = random.choice(pool)
 
-    # Fetch translation, pos and determiner in parallel via AI
-    translation, pos, word_determiner = await asyncio.gather(
-        _get_translation(word.word, language),
-        _get_pos(word.word, language),
-        _get_determiner(word.word, language),
-        return_exceptions=True,
-    )
+    # FIX: utilise la traduction en BDD si disponible, sinon appelle Ollama
+    if word.translation:
+        translation   = word.translation
+        pos, word_determiner = await asyncio.gather(
+            _get_pos(word.word, language),
+            _get_determiner(word.word, language),
+            return_exceptions=True,
+        )
+    else:
+        translation, pos, word_determiner = await asyncio.gather(
+            _get_translation(word.word, language),
+            _get_pos(word.word, language),
+            _get_determiner(word.word, language),
+            return_exceptions=True,
+        )
 
-    return {
-        "id":            word.id,
-        "word":          word.word,
-        "translation":   translation if isinstance(translation, str) else "",
-        "pos":           pos if isinstance(pos, str) else None,
-        "word_determiner": word_determiner if isinstance(word_determiner, str) else None,
-        "language":      word.language,
-        "mastery_score": word.mastery_score,
-        "correct_count": word.correct_count,
-        "wrong_count":   word.wrong_count,
-    }
+    return _serialize_word(
+        word,
+        translation      if isinstance(translation, str)      else "",
+        pos              if isinstance(pos, str)              else None,
+        word_determiner  if isinstance(word_determiner, str)  else None,
+    )
 
 
 @router.post("/word/{vocab_id}/answer")
 def answer_word(
     vocab_id: int,
     user_answer: str,
+    correct_answer: str,  # FIX: le frontend passe la traduction attendue
     current_user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ):
@@ -125,8 +141,9 @@ def answer_word(
     if not word:
         raise HTTPException(404, "Vocabulary entry not found")
 
-    # Compare against user_answer — translation is fetched live so we re-use the stored word
-    correct = user_answer.strip().lower() == word.word.strip().lower()
+    # FIX: comparaison contre la traduction attendue, pas le mot source
+    correct = user_answer.strip().lower() == correct_answer.strip().lower()
+
     if correct:
         word.correct_count += 1
     else:
@@ -143,7 +160,7 @@ def answer_word(
 
 
 # ---------------------------------------------------------------------------
-# Sentence exercise (placeholder — powered by AI route)
+# Sentence exercise
 # ---------------------------------------------------------------------------
 
 @router.get("/sentence")

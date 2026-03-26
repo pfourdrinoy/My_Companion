@@ -8,54 +8,56 @@ interface LetterByLetterProps {
   onResult: (correct: boolean) => void;
 }
 
-// m/f/n → der/die/das
-const getGermanArticle = (gender: string | null): string => {
-  if (gender === "m") return "der";
-  if (gender === "f") return "die";
-  if (gender === "n") return "das";
-  return "";
-};
+// Caractères non-éditables (séparateurs visuels entre les cases)
+const isSeparator = (char: string) => char === " " || char === "'" || char === "-";
 
-// m/f/n → le/la/le
-const getFrenchArticle = (gender: string | null): string => {
-  if (gender === "m") return "le";
-  if (gender === "f") return "la";
-  if (gender === "n") return "le";
-  return "";
-};
-
-// Capitalise la première lettre (les noms allemands prennent une majuscule)
+// Noms allemands → majuscule
 const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
 
+// Calcule la réponse attendue de l'utilisateur.
+// word_determiner peut être :
+//   - juste l'article   : "le", "la", "l'", "der", "die", "das"  (chemin spaCy)
+//   - article + mot      : "le chien", "der Hund"                  (chemin Ollama)
+// On normalise pour toujours obtenir "article + mot".
+const buildExpected = (exercise: WordFromBackend): string => {
+  const isGerman = exercise.language?.toLowerCase() === "german";
+  const isNoun = exercise.pos === "noun";
+  const wordPart = isGerman && isNoun ? capitalize(exercise.word) : exercise.word;
+
+  if (exercise.word_determiner) {
+    const det = exercise.word_determiner.trim();
+    // Si le déterminant contient déjà le mot → on l'utilise tel quel
+    if (det.toLowerCase().includes(exercise.word.toLowerCase())) {
+      return det;
+    }
+    // Sinon c'est juste l'article → on concatène avec le mot
+    // "l'" → "l'arbre"  (pas d'espace après l'apostrophe)
+    if (det.endsWith("'")) return det + wordPart;
+    return det + " " + wordPart;
+  }
+
+  // Pas de déterminant (non-nom ou langue sans article)
+  return wordPart;
+};
+
 const LetterByLetter: React.FC<LetterByLetterProps> = ({ exercise, onResult }) => {
-  const article = getGermanArticle(exercise.gender);
-  const frArticle = getFrenchArticle(exercise.gender);
-  const isNoun = exercise.pos === "noun" && article !== "";
-
-  // Aléatoire : sens de traduction
-  const [toGerman] = useState(() => Math.random() > 0.5);
-
-  // Ce qu'on affiche à l'utilisateur
-  const displayedWord = toGerman
-    ? (isNoun ? `${frArticle} ${exercise.translation}` : exercise.translation)
-    : `${article} ${capitalize(exercise.word)}`;
-
-  // Ce que l'utilisateur doit écrire
-  const buildExpected = (): string => {
-    if (toGerman && isNoun) return `${article} ${capitalize(exercise.word)}`;
-    if (toGerman) return exercise.word;
-    return exercise.translation;
-  };
-
-  const expected = buildExpected();
+  const expected = buildExpected(exercise);
   const tokens = expected.split("");
 
-  // Index des cases éditables (tout sauf les espaces)
+  const isNoun = exercise.pos === "noun";
+  const hasArticle = !!exercise.word_determiner;
+  const langLabel = exercise.language
+    ? exercise.language.charAt(0).toUpperCase() + exercise.language.slice(1)
+    : "target language";
+
+  // Index des cases éditables (tout sauf séparateurs)
   const editableIndexes = tokens
-    .map((t, i) => t !== " " ? i : null)
+    .map((t, i) => (!isSeparator(t) ? i : null))
     .filter((i): i is number => i !== null);
 
-  const [values, setValues] = useState<string[]>(tokens.map(t => t === " " ? " " : ""));
+  const [values, setValues] = useState<string[]>(
+    tokens.map(t => (isSeparator(t) ? t : ""))
+  );
   const [submitted, setSubmitted] = useState(false);
   const [correct, setCorrect] = useState(false);
 
@@ -86,8 +88,7 @@ const LetterByLetter: React.FC<LetterByLetterProps> = ({ exercise, onResult }) =
       const editablePos = editableIndexes.indexOf(tokenIndex);
       const isLast = editablePos === editableIndexes.length - 1;
       if (isLast) {
-        const allFilled = editableIndexes.every(i => newValues[i] !== "");
-        if (allFilled) submit(newValues);
+        if (editableIndexes.every(i => newValues[i] !== "")) submit(newValues);
       } else {
         focusNext(editablePos);
       }
@@ -116,8 +117,7 @@ const LetterByLetter: React.FC<LetterByLetterProps> = ({ exercise, onResult }) =
 
   const submit = (currentValues: string[]) => {
     const userAnswer = currentValues.join("");
-    const isCorrect = userAnswer === expected;
-    setCorrect(isCorrect);
+    setCorrect(userAnswer === expected);
     setSubmitted(true);
   };
 
@@ -138,36 +138,42 @@ const LetterByLetter: React.FC<LetterByLetterProps> = ({ exercise, onResult }) =
       {/* Consigne */}
       <div className="text-center flex flex-col gap-2">
         <span className="text-stone-400 text-xs font-bold uppercase tracking-[0.2em]">
-          {toGerman ? "Translate to German" : "Translate to French"}
+          Translate to {langLabel}
         </span>
+
         <h3 className="text-4xl font-extrabold text-stone-900 tracking-tight">
-          {displayedWord}
+          {exercise.translation || exercise.word}
         </h3>
+
         {exercise.pos && (
           <span className="text-stone-300 text-xs font-bold uppercase tracking-widest">
             {exercise.pos}
           </span>
         )}
-        {isNoun ? (
+
+        {isNoun && hasArticle && (
           <p className="text-amber-600 text-sm font-bold mt-1">
-            ⚠️ Déduire le déterminant · Respecter la majuscule
-          </p>
-        ) : (
-          <p className="text-stone-400 text-sm font-medium mt-1">
-            ⚠️ Respecter la casse
+            ⚠️ Include the definite article
           </p>
         )}
       </div>
 
-      {/* Cases */}
-      <div className="flex flex-wrap justify-center items-center gap-2">
+      {/* Cases lettre par lettre */}
+      <div className="flex flex-wrap justify-center items-center gap-1.5">
         {tokens.map((token, i) => {
+          // Espace → grand séparateur invisible
           if (token === " ") {
+            return <div key={i} className="w-5" />;
+          }
+          // Apostrophe ou tiret → affiché en fixe, non éditable
+          if (isSeparator(token)) {
             return (
               <div
                 key={i}
-                className="w-10 h-14 rounded-xl bg-stone-100 border-2 border-stone-200"
-              />
+                className="w-6 h-14 flex items-center justify-center text-xl font-extrabold text-stone-400"
+              >
+                {token}
+              </div>
             );
           }
           return (
@@ -221,7 +227,7 @@ const LetterByLetter: React.FC<LetterByLetterProps> = ({ exercise, onResult }) =
                 </p>
                 {!correct && (
                   <p className="text-stone-600 font-medium">
-                    Réponse : <span className="font-bold">{expected}</span>
+                    Answer: <span className="font-bold">{expected}</span>
                   </p>
                 )}
               </div>

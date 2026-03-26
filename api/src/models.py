@@ -31,7 +31,7 @@ class User(Base):
     id       = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
-    native = Column(String, nullable=False)
+    native   = Column(String, nullable=False)
 
     dogs       = relationship("Dog", back_populates="owner")
     vocabulary = relationship("UserVocabulary", back_populates="owner")
@@ -79,14 +79,19 @@ class Dog(Base):
 
 class UserVocabulary(Base):
     __tablename__ = "user_vocabulary"
+    # FIX: ajout de la contrainte d'unicité manquante
+    __table_args__ = (UniqueConstraint("user_id", "language", "word", name="uq_user_language_word"),)
 
-    id                     = Column(Integer, primary_key=True, index=True)
-    user_id                = Column(Integer, ForeignKey("users.id"), nullable=False)
-    language               = Column(String, nullable=False)
-    word                   = Column(String, nullable=False)
-    correct_count          = Column(Integer, default=0)
-    wrong_count            = Column(Integer, default=0)
-    mastery_score          = Column(Float, default=0.0)
-    created_at             = Column(DateTime, default=datetime.utcnow)
+    id            = Column(Integer, primary_key=True, index=True)
+    user_id       = Column(Integer, ForeignKey("users.id"), nullable=False)
+    language      = Column(String, nullable=False)
+    word          = Column(String, nullable=False)
+    # FIX: ajout de translation et gender pour que les exercices puissent les utiliser
+    translation   = Column(String, nullable=True)
+    gender        = Column(String, nullable=True)
+    correct_count = Column(Integer, default=0)
+    wrong_count   = Column(Integer, default=0)
+    mastery_score = Column(Float, default=0.0)
+    created_at    = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="vocabulary")
