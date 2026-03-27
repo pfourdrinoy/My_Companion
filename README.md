@@ -39,6 +39,7 @@ docker compose up --build
 
 ## TODO
 
+Il faut restructurer l'API pour avoir que des fichiers de routes et avoir des fichiers d'helpers et de fonction pour éviter d'avoir des doublons
 app:VocabularyList: réaction et adaptabilité à la forme de la fenêtre
 
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Flame, Utensils, BookOpen, LayoutDashboard, Trophy, LogOut, ChevronDown } from "lucide-react";
 import Dog from "./components/Dog";
@@ -51,6 +51,8 @@ export default function App() {
   const [sessionExercises, setSessionExercises] = useState<WordFromBackend[]>([]);
   const [sessionType, setSessionType] = useState<SessionType>('vocabulary');
   const [correctCount, setCorrectCount] = useState(0);
+  const [nativeLanguage, setNativeLanguage] = useState<string>("english");
+  const nativeLanguageRef = useRef<string>("english");
 
   // --- Effects ---
   useEffect(() => {
@@ -62,11 +64,21 @@ export default function App() {
     if (!isAuthenticated) return;
     const fetchLanguages = async () => {
       try {
-        const res = await authFetch(`${BASE_URL}/user/languages`);
+        const [res, meRes] = await Promise.all([
+          authFetch(`${BASE_URL}/user/languages`),
+          authFetch(`${BASE_URL}/user/me`),
+        ]);
         if (res.ok) {
           const langs: Language[] = await res.json();
           setEnrolledLanguages(langs);
           if (langs.length > 0) setActiveLanguage(langs[0]);
+        }
+        if (meRes.ok) {
+          const me = await meRes.json();
+          if (me.native) {
+            setNativeLanguage(me.native);
+            nativeLanguageRef.current = me.native;
+          }
         }
       } catch (e) {
         console.error("Failed to fetch languages", e);
@@ -156,6 +168,7 @@ export default function App() {
 
     try {
       let words: WordFromBackend[] = [];
+      const native = nativeLanguageRef.current; // toujours à jour, pas de closure périmée
 
       if (type === 'vocabulary') {
         const extractScalar = (data: unknown): string => {
@@ -170,8 +183,9 @@ export default function App() {
             let newWord = "";
             // Jusqu'à 3 tentatives pour obtenir un mot différent
             for (let attempt = 0; attempt < 3; attempt++) {
+              const exclude = [...seenWords].join(",");
               const rawWord = await authFetch(
-                `${BASE_URL}/ai/get/new_word?language_learnt=${langName}`,
+                `${BASE_URL}/ai/get/new_word?language_learnt=${langName}${exclude ? `&exclude=${encodeURIComponent(exclude)}` : ""}`,
                 { method: "POST" }
               ).then(r => r.json());
               const candidate = extractScalar(rawWord);
@@ -197,7 +211,7 @@ export default function App() {
             };
 
             const [translationRes, posRes, wordDetRes] = await Promise.allSettled([
-              authFetch(`${BASE_URL}/ai/translate/word?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
+              authFetch(`${BASE_URL}/ai/translate/word?word=${encodeURIComponent(newWord)}&language_learnt=${langName}&language_user=${encodeURIComponent(native)}`, { method: "POST" }).then(r => r.json()),
               authFetch(`${BASE_URL}/ai/get/word_pos?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
               authFetch(`${BASE_URL}/ai/get/word_determiner?word=${encodeURIComponent(newWord)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
             ]);
@@ -237,28 +251,37 @@ export default function App() {
     try {
       // 1. Récupère jusqu'à 10 mots triés par mastery (les plus faibles d'abord)
       const res = await authFetch(`${BASE_URL}/vocabulary/all_sorted?language=${langName}&limit=10`);
+
+      // Fallback : si la BDD est vide (404) on génère des nouveaux mots comme le mode card
+      if (res.status === 404) {
+        await startSession("vocabulary");
+        return;
+      }
       if (!res.ok) { console.error("Erreur fetch vocabulaire"); return; }
       const raw: { id: number; word: string; translation: string | null; gender: string | null; language: string; mastery_score: number; correct_count: number; wrong_count: number }[] = await res.json();
-      if (raw.length === 0) { console.error("Aucun mot dans la BDD pour cette langue"); return; }
+      if (raw.length === 0) { await startSession("vocabulary"); return; }
 
       // 2. Mélange et limite à 5
       const shuffled = [...raw].sort(() => 0.5 - Math.random()).slice(0, 5);
 
-      // 3. Enrichit chaque mot avec word_determiner et pos en parallèle
+      // 3. Enrichit chaque mot avec traduction (dans la langue native), word_determiner et pos en parallèle
       const enriched = await Promise.all(
         shuffled.map(async (w) => {
-          const [detRes, posRes] = await Promise.allSettled([
+          const [translationRes, detRes, posRes] = await Promise.allSettled([
+            // Toujours retraduire vers la langue native, même si une traduction existe en BDD
+            authFetch(`${BASE_URL}/ai/translate/word?word=${encodeURIComponent(w.word)}&language_learnt=${langName}&language_user=${encodeURIComponent(nativeLanguage)}`, { method: "POST" }).then(r => r.json()),
             authFetch(`${BASE_URL}/ai/get/word_determiner?word=${encodeURIComponent(w.word)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
             authFetch(`${BASE_URL}/ai/get/word_pos?word=${encodeURIComponent(w.word)}&language_learnt=${langName}`, { method: "POST" }).then(r => r.json()),
           ]);
 
-          const rawDet = detRes.status === "fulfilled" ? String(detRes.value ?? "") : null;
-          const pos    = posRes.status === "fulfilled" ? String(posRes.value ?? "") : null;
+          const translation = translationRes.status === "fulfilled" ? String(translationRes.value ?? "") : (w.translation ?? "");
+          const rawDet      = detRes.status === "fulfilled" ? String(detRes.value ?? "") : null;
+          const pos         = posRes.status === "fulfilled" ? String(posRes.value ?? "") : null;
 
           return {
             id:              w.id,
             word:            w.word,
-            translation:     w.translation ?? "",
+            translation,
             pos,
             gender:          w.gender ?? null,
             word_determiner: rawDet,

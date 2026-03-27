@@ -132,16 +132,16 @@ def get_vocabulary_sorted(
 
     return [_serialize(w) for w in words]
 
-
-@router.delete("/delete")
-def delete_vocabulary(
-    word_id: int,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
-):
-    word = db.query(UserVocabulary).filter_by(id=word_id, user_id=current_user.id).first()
-    if not word:
-        raise HTTPException(404, "Word not found")
-    db.delete(word)
-    db.commit()
-    return {"deleted": word_id}
+#IMadeChange
+# @router.delete("/delete")
+# def delete_vocabulary(
+#     word_id: int,
+#     current_user: Annotated[User, Depends(get_current_user)],
+#     db: Session = Depends(get_db),
+# ):
+#     word = db.query(UserVocabulary).filter_by(id=word_id, user_id=current_user.id).first()
+#     if not word:
+#         raise HTTPException(404, "Word not found")
+#     db.delete(word)
+#     db.commit()
+#     return {"deleted": word_id}

@@ -32,8 +32,8 @@ def _vocab_query(user_id: int, language: str, db: Session) -> list[UserVocabular
     )
 
 
-async def _get_translation(word: str, language: str) -> str:
-    prompt = f'Translate "{word}" from {language} to english. Reply with the translated word only, no punctuation, no explanation.'
+async def _get_translation(word: str, language: str, target_language: str = "english") -> str:
+    prompt = f'Translate "{word}" from {language} to {target_language}. Reply with the translated word only, no punctuation, no explanation.'
     return await _ollama_retry(prompt, _single_word)
 
 
@@ -104,6 +104,8 @@ async def exercise_word(
     pool = words[:max(1, len(words) // 3)]
     word = random.choice(pool)
 
+    native = current_user.native or "english"
+
     # FIX: utilise la traduction en BDD si disponible, sinon appelle Ollama
     if word.translation:
         translation   = word.translation
@@ -114,7 +116,7 @@ async def exercise_word(
         )
     else:
         translation, pos, word_determiner = await asyncio.gather(
-            _get_translation(word.word, language),
+            _get_translation(word.word, language, native),
             _get_pos(word.word, language),
             _get_determiner(word.word, language),
             return_exceptions=True,
@@ -127,57 +129,58 @@ async def exercise_word(
         word_determiner  if isinstance(word_determiner, str)  else None,
     )
 
+#IMadeChange
+# @router.post("/word/{vocab_id}/answer")
+# def answer_word(
+#     vocab_id: int,
+#     user_answer: str,
+#     correct_answer: str,  # FIX: le frontend passe la traduction attendue
+#     current_user: Annotated[User, Depends(get_current_user)],
+#     db: Session = Depends(get_db),
+# ):
+#     """Submit an answer for a word exercise and update mastery."""
+#     word = db.query(UserVocabulary).filter_by(id=vocab_id, user_id=current_user.id).first()
+#     if not word:
+#         raise HTTPException(404, "Vocabulary entry not found")
 
-@router.post("/word/{vocab_id}/answer")
-def answer_word(
-    vocab_id: int,
-    user_answer: str,
-    correct_answer: str,  # FIX: le frontend passe la traduction attendue
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
-):
-    """Submit an answer for a word exercise and update mastery."""
-    word = db.query(UserVocabulary).filter_by(id=vocab_id, user_id=current_user.id).first()
-    if not word:
-        raise HTTPException(404, "Vocabulary entry not found")
+#     # FIX: comparaison contre la traduction attendue, pas le mot source
+#     correct = user_answer.strip().lower() == correct_answer.strip().lower()
 
-    # FIX: comparaison contre la traduction attendue, pas le mot source
-    correct = user_answer.strip().lower() == correct_answer.strip().lower()
+#     if correct:
+#         word.correct_count += 1
+#     else:
+#         word.wrong_count += 1
 
-    if correct:
-        word.correct_count += 1
-    else:
-        word.wrong_count += 1
+#     total = word.correct_count + word.wrong_count
+#     word.mastery_score = round(word.correct_count / total, 3) if total else 0.0
+#     db.commit()
 
-    total = word.correct_count + word.wrong_count
-    word.mastery_score = round(word.correct_count / total, 3) if total else 0.0
-    db.commit()
-
-    return {
-        "correct":       correct,
-        "mastery_score": word.mastery_score,
-    }
+#     return {
+#         "correct":       correct,
+#         "mastery_score": word.mastery_score,
+#     }
 
 
 # ---------------------------------------------------------------------------
 # Sentence exercise
 # ---------------------------------------------------------------------------
 
-@router.get("/sentence")
-def exercise_sentence(
-    language: str,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
-):
-    """Return a sentence built from the user's weakest words."""
-    language = language.lower()
-    _check_enrolled(current_user.id, language, db)
-    words = _vocab_query(current_user.id, language, db)
-    if not words:
-        raise HTTPException(404, "No vocabulary yet for this language")
-    sample = [w.word for w in words[:5]]
-    return {
-        "language": language,
-        "words":    sample,
-        "hint":     "Use the AI /ai/translate/sentence endpoint to get a sentence with these words.",
-    }
+#IMadeChange
+# @router.get("/sentence")
+# def exercise_sentence(
+#     language: str,
+#     current_user: Annotated[User, Depends(get_current_user)],
+#     db: Session = Depends(get_db),
+# ):
+#     """Return a sentence built from the user's weakest words."""
+#     language = language.lower()
+#     _check_enrolled(current_user.id, language, db)
+#     words = _vocab_query(current_user.id, language, db)
+#     if not words:
+#         raise HTTPException(404, "No vocabulary yet for this language")
+#     sample = [w.word for w in words[:5]]
+#     return {
+#         "language": language,
+#         "words":    sample,
+#         "hint":     "Use the AI /ai/translate/sentence endpoint to get a sentence with these words.",
+#     }

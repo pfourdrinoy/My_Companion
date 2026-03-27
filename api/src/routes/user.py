@@ -73,10 +73,11 @@ def me(current_user: Annotated[User, Depends(get_current_user)]):
 # Language management
 # ---------------------------------------------------------------------------
 
-@router.get("/languages/available")
-def available_languages():
-    """Return all supported languages with their flag and label."""
-    return [{"language": k, **v} for k, v in LANGUAGES.items()]
+#IMadeChange
+# @router.get("/languages/available")
+# def available_languages():
+#     """Return all supported languages with their flag and label."""
+#     return [{"language": k, **v} for k, v in LANGUAGES.items()]
 
 
 @router.get("/languages", response_model=list[LanguageStats])
@@ -104,8 +105,8 @@ def my_languages(
         ))
     return result
 
-
-@router.post("/languages/{language}", status_code=201)
+#IMadeChange
+@router.post("/enroll_languages/{language}", status_code=201)
 def enroll_language(
     language: str,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -122,8 +123,8 @@ def enroll_language(
     db.commit()
     return {"message": f"Enrolled in {LANGUAGES[language]['label']} {LANGUAGES[language]['flag']}"}
 
-
-@router.delete("/languages/{language}")
+#IMadeChange
+@router.delete("/del_languages/{language}")
 def unenroll_language(
     language: str,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -143,25 +144,26 @@ def unenroll_language(
 # Vocabulary management
 # ---------------------------------------------------------------------------
 
-@router.get("/vocabulary")
-def get_vocabulary(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db),
-    language: str | None = None,
-):
-    """Return the user's vocabulary, optionally filtered by language."""
-    q = db.query(UserVocabulary).filter_by(user_id=current_user.id)
-    if language:
-        q = q.filter_by(language=language.lower())
-    words = q.order_by(UserVocabulary.mastery_score.asc()).all()
-    return [
-        {
-            "id":                     w.id,
-            "language":               w.language,
-            "word":                   w.word,
-            "correct_count":          w.correct_count,
-            "wrong_count":            w.wrong_count,
-            "mastery_score":          w.mastery_score,
-        }
-        for w in words
-    ]
+#IMadeChange
+# @router.get("/vocabulary")
+# def get_vocabulary(
+#     current_user: Annotated[User, Depends(get_current_user)],
+#     db: Session = Depends(get_db),
+#     language: str | None = None,
+# ):
+#     """Return the user's vocabulary, optionally filtered by language."""
+#     q = db.query(UserVocabulary).filter_by(user_id=current_user.id)
+#     if language:
+#         q = q.filter_by(language=language.lower())
+#     words = q.order_by(UserVocabulary.mastery_score.asc()).all()
+#     return [
+#         {
+#             "id":                     w.id,
+#             "language":               w.language,
+#             "word":                   w.word,
+#             "correct_count":          w.correct_count,
+#             "wrong_count":            w.wrong_count,
+#             "mastery_score":          w.mastery_score,
+#         }
+#         for w in words
+#     ]

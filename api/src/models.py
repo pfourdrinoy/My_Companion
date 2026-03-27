@@ -79,14 +79,12 @@ class Dog(Base):
 
 class UserVocabulary(Base):
     __tablename__ = "user_vocabulary"
-    # FIX: ajout de la contrainte d'unicité manquante
     __table_args__ = (UniqueConstraint("user_id", "language", "word", name="uq_user_language_word"),)
 
     id            = Column(Integer, primary_key=True, index=True)
     user_id       = Column(Integer, ForeignKey("users.id"), nullable=False)
     language      = Column(String, nullable=False)
     word          = Column(String, nullable=False)
-    # FIX: ajout de translation et gender pour que les exercices puissent les utiliser
     translation   = Column(String, nullable=True)
     gender        = Column(String, nullable=True)
     correct_count = Column(Integer, default=0)

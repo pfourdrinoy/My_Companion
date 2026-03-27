@@ -141,7 +141,7 @@ const LetterByLetter: React.FC<LetterByLetterProps> = ({ exercise, onResult }) =
           Translate to {langLabel}
         </span>
 
-        <h3 className="text-4xl font-extrabold text-stone-900 tracking-tight">
+        <h3 className="text-4xl font-extrabold text-stone-900 tracking-tight capitalize">
           {exercise.translation || exercise.word}
         </h3>
 
